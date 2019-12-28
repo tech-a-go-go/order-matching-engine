@@ -160,6 +160,76 @@ func (ob *OrderBook) ProcessLimitOrder(side Side, orderID string, quantity, pric
 	return
 }
 
+// ProcessGhostLimitOrder is almost the same as ProcessLimitOrder but this function doesn't add new order. Just only eat existing orders.
+func (ob *OrderBook) ProcessGhostLimitOrder(side Side, orderID string, quantity, price decimal.Decimal) (done []*Order, partial *Order, partialQuantityProcessed decimal.Decimal, err error) {
+	if _, ok := ob.orders[orderID]; ok {
+		return nil, nil, decimal.Zero, ErrOrderExists
+	}
+
+	if quantity.Sign() <= 0 {
+		return nil, nil, decimal.Zero, ErrInvalidQuantity
+	}
+
+	if price.Sign() <= 0 {
+		return nil, nil, decimal.Zero, ErrInvalidPrice
+	}
+
+	quantityToTrade := quantity
+	var (
+		sideToProcess *OrderSide
+		// sideToAdd     *OrderSide
+		comparator func(decimal.Decimal) bool
+		iter       func() *OrderQueue
+	)
+
+	if side == Buy {
+		// sideToAdd = ob.bids
+		sideToProcess = ob.asks
+		comparator = price.GreaterThanOrEqual
+		iter = ob.asks.MinPriceQueue
+	} else {
+		// sideToAdd = ob.asks
+		sideToProcess = ob.bids
+		comparator = price.LessThanOrEqual
+		iter = ob.bids.MaxPriceQueue
+	}
+
+	bestPrice := iter()
+	for quantityToTrade.Sign() > 0 && sideToProcess.Len() > 0 && comparator(bestPrice.Price()) {
+		ordersDone, partialDone, partialQty, quantityLeft := ob.processQueue(bestPrice, quantityToTrade)
+		done = append(done, ordersDone...)
+		partial = partialDone
+		partialQuantityProcessed = partialQty
+		quantityToTrade = quantityLeft
+		bestPrice = iter()
+	}
+
+	if quantityToTrade.Sign() > 0 {
+		// o := NewOrder(orderID, side, quantityToTrade, price, time.Now().UTC())
+		// if len(done) > 0 {
+		// 	partialQuantityProcessed = quantity.Sub(quantityToTrade)
+		// 	partial = o
+		// }
+		// ob.orders[orderID] = sideToAdd.Append(o)
+	} else {
+		totalQuantity := decimal.Zero
+		totalPrice := decimal.Zero
+
+		for _, order := range done {
+			totalQuantity = totalQuantity.Add(order.Quantity())
+			totalPrice = totalPrice.Add(order.Price().Mul(order.Quantity()))
+		}
+
+		if partialQuantityProcessed.Sign() > 0 {
+			totalQuantity = totalQuantity.Add(partialQuantityProcessed)
+			totalPrice = totalPrice.Add(partial.Price().Mul(partialQuantityProcessed))
+		}
+
+		//done = append(done, NewOrder(orderID, side, quantity, totalPrice.Div(totalQuantity), time.Now().UTC()))
+	}
+	return
+}
+
 func (ob *OrderBook) processQueue(orderQueue *OrderQueue, quantityToTrade decimal.Decimal) (done []*Order, partial *Order, partialQuantityProcessed, quantityLeft decimal.Decimal) {
 	quantityLeft = quantityToTrade
 

@@ -74,7 +74,7 @@ func TestLimitProcess(t *testing.T) {
 	ob := NewOrderBook()
 	addDepth(ob, "", decimal.New(2, 0))
 
-	done, partial, partialQty, err := ob.ProcessLimitOrder(Buy, "order-b100", decimal.New(1, 0), decimal.New(100, 0))
+	done, partial, partialQty, err := ob.ProcessLimitOrder(Buy, "order-b100", decimal.NewFromFloat(1.0), decimal.New(100, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestLimitProcess(t *testing.T) {
 	if partial.ID() != "sell-100" {
 		t.Fatal("Wrong partial id")
 	}
-
+	t.Log("partialQty:", partialQty)
 	if !partialQty.Equal(decimal.New(1, 0)) {
 		t.Fatal("Wrong partial quantity processed")
 	}
@@ -139,6 +139,90 @@ func TestLimitProcess(t *testing.T) {
 
 	t.Log("Done:", done)
 	if len(done) != 7 {
+		t.Fatal("Wrong done quantity")
+	}
+
+	if partial != nil {
+		t.Fatal("Wrong partial")
+	}
+
+	if partialQty.Sign() != 0 {
+		t.Fatal("Wrong partialQty")
+	}
+
+	t.Log(ob)
+}
+
+func TestGhostLimitProcess(t *testing.T) {
+	ob := NewOrderBook()
+	addDepth(ob, "", decimal.New(2, 0))
+
+	done, partial, partialQty, err := ob.ProcessLimitOrder(Buy, "order-b100", decimal.NewFromFloat(1.0), decimal.New(100, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("Done:", done)
+	if done[0].ID() != "order-b100" {
+		t.Fatal("Wrong done id")
+	}
+
+	t.Log("Partial:", partial)
+	if partial.ID() != "sell-100" {
+		t.Fatal("Wrong partial id")
+	}
+	t.Log("partialQty:", partialQty)
+	if !partialQty.Equal(decimal.New(1, 0)) {
+		t.Fatal("Wrong partial quantity processed")
+	}
+
+	t.Log(ob)
+
+	done, partial, partialQty, err = ob.ProcessGhostLimitOrder(Buy, "order-b150", decimal.New(10, 0), decimal.New(150, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("Done:", done)
+	if len(done) != 5 {
+		t.Fatal("Wrong done quantity")
+	}
+
+	if partial != nil {
+		t.Fatal("Wrong partial is created")
+	}
+
+	if !partialQty.Equal(decimal.New(0, 0)) {
+		t.Fatal("Wrong partial quantity processed", partialQty)
+	}
+
+	t.Log(ob)
+
+	if _, _, _, err := ob.ProcessLimitOrder(Sell, "buy-70", decimal.New(11, 0), decimal.New(40, 0)); err == nil {
+		t.Fatal("Can add existing order")
+	}
+
+	if _, _, _, err := ob.ProcessLimitOrder(Sell, "fake-70", decimal.New(0, 0), decimal.New(40, 0)); err == nil {
+		t.Fatal("Can add empty quantity order")
+	}
+
+	if _, _, _, err := ob.ProcessLimitOrder(Sell, "fake-70", decimal.New(10, 0), decimal.New(0, 0)); err == nil {
+		t.Fatal("Can add zero price")
+	}
+
+	if o := ob.CancelOrder("order-b100"); o != nil {
+		t.Fatal("Can cancel done order")
+	}
+
+	t.Log(ob)
+
+	done, partial, partialQty, err = ob.ProcessGhostLimitOrder(Sell, "order-s40", decimal.New(11, 0), decimal.New(40, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("Done:", done)
+	if len(done) != 5 {
 		t.Fatal("Wrong done quantity")
 	}
 
@@ -291,4 +375,51 @@ func BenchmarkLimitOrder(b *testing.B) {
 	}
 	elapsed := time.Since(stopwatch)
 	fmt.Printf("\n\nElapsed: %s\nTransactions per second (avg): %f\n", elapsed, float64(b.N*32)/elapsed.Seconds())
+}
+
+func TestProcessGhostLimitOrder(t *testing.T) {
+	ob := NewOrderBook()
+	quantity := decimal.New(2, 0)
+	done, partial, partialQty, err := ob.ProcessGhostLimitOrder(Buy, fmt.Sprintf("buy"), quantity, decimal.New(100, 0))
+	if len(done) != 0 {
+		t.Fatal("OrderBook failed to process limit order (done is not empty)")
+	}
+	if partial != nil {
+		t.Fatal("OrderBook failed to process limit order (partial is not empty)")
+	}
+	if partialQty.Sign() != 0 {
+		t.Fatal("OrderBook failed to process limit order (partialQty is not zero)")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ob.bids.Len() != 0 {
+		t.Fatal("OrderBook failed to process limit order (bids are not empty)")
+	}
+}
+
+func TestScenario(t *testing.T) {
+	ob := NewOrderBook()
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-1"), decimal.NewFromFloat(1.0), decimal.New(120, 0))
+	ob.ProcessLimitOrder(Buy, fmt.Sprintf("buy-1"), decimal.NewFromFloat(1.0), decimal.New(100, 0))
+
+	ob.ProcessGhostLimitOrder(Buy, fmt.Sprintf("buy-2"), decimal.NewFromFloat(0.3), decimal.New(120, 0))
+
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-2"), decimal.NewFromFloat(0.2), decimal.New(100, 0))
+
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-3"), decimal.NewFromFloat(0.5), decimal.New(100, 0))
+
+	ob.ProcessGhostLimitOrder(Buy, fmt.Sprintf("buy-2"), decimal.NewFromFloat(0.7), decimal.New(120, 0))
+
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-4"), decimal.NewFromFloat(0.3), decimal.New(100, 0))
+
+	t.Log(ob)
+
+	if ob.asks.Len() != 0 {
+		t.Fatal("OrderBook failed to process ghost limit order (asks are not empty)")
+	}
+
+	if ob.bids.Len() != 0 {
+		t.Fatal("OrderBook failed to process ghost limit order (bids are not empty)")
+	}
 }

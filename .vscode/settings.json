@@ -1,0 +1,5 @@
+{
+    "go.testEnvVars": {"GO_ENV": "test", "PROJECT_ROOT": "${workspaceFolder}"},
+    "go.testTimeout": "10s",
+    "go.testFlags": ["-v"]
+}
