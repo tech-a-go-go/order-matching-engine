@@ -263,9 +263,9 @@ func (ob *OrderBook) processGhostQueue(orderQueue *OrderQueue, quantityToTrade d
 			partial = NewOrder(headOrder.ID(), headOrder.Side(), headOrder.Quantity().Sub(quantityLeft), headOrder.Price(), headOrder.Time())
 			partialQuantityProcessed = quantityLeft
 			orderQueue.Update(headOrderEl, partial)
-			quantityLeft = decimal.Zero
 			headOrder.quantity = quantityLeft
 			done = append(done, headOrder)
+			quantityLeft = decimal.Zero
 		} else {
 			quantityLeft = quantityLeft.Sub(headOrder.Quantity())
 			done = append(done, ob.CancelOrder(headOrder.ID()))
