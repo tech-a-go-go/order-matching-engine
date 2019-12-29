@@ -196,7 +196,7 @@ func (ob *OrderBook) ProcessGhostLimitOrder(side Side, orderID string, quantity,
 
 	bestPrice := iter()
 	for quantityToTrade.Sign() > 0 && sideToProcess.Len() > 0 && comparator(bestPrice.Price()) {
-		ordersDone, partialDone, partialQty, quantityLeft := ob.processQueue(bestPrice, quantityToTrade)
+		ordersDone, partialDone, partialQty, quantityLeft := ob.processGhostQueue(bestPrice, quantityToTrade)
 		done = append(done, ordersDone...)
 		partial = partialDone
 		partialQuantityProcessed = partialQty
@@ -242,6 +242,30 @@ func (ob *OrderBook) processQueue(orderQueue *OrderQueue, quantityToTrade decima
 			partialQuantityProcessed = quantityLeft
 			orderQueue.Update(headOrderEl, partial)
 			quantityLeft = decimal.Zero
+		} else {
+			quantityLeft = quantityLeft.Sub(headOrder.Quantity())
+			done = append(done, ob.CancelOrder(headOrder.ID()))
+		}
+	}
+
+	return
+}
+
+// processGhostQueue appends partially eaten order to done slice.
+func (ob *OrderBook) processGhostQueue(orderQueue *OrderQueue, quantityToTrade decimal.Decimal) (done []*Order, partial *Order, partialQuantityProcessed, quantityLeft decimal.Decimal) {
+	quantityLeft = quantityToTrade
+
+	for orderQueue.Len() > 0 && quantityLeft.Sign() > 0 {
+		headOrderEl := orderQueue.Head()
+		headOrder := headOrderEl.Value.(*Order)
+
+		if quantityLeft.LessThan(headOrder.Quantity()) {
+			partial = NewOrder(headOrder.ID(), headOrder.Side(), headOrder.Quantity().Sub(quantityLeft), headOrder.Price(), headOrder.Time())
+			partialQuantityProcessed = quantityLeft
+			orderQueue.Update(headOrderEl, partial)
+			quantityLeft = decimal.Zero
+			headOrder.quantity = quantityLeft
+			done = append(done, headOrder)
 		} else {
 			quantityLeft = quantityLeft.Sub(headOrder.Quantity())
 			done = append(done, ob.CancelOrder(headOrder.ID()))

@@ -423,3 +423,13 @@ func TestScenario(t *testing.T) {
 		t.Fatal("OrderBook failed to process ghost limit order (bids are not empty)")
 	}
 }
+
+func TestScenario2(t *testing.T) {
+	ob := NewOrderBook()
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-1"), decimal.NewFromFloat(1.0), decimal.New(130, 0))
+	ob.ProcessLimitOrder(Sell, fmt.Sprintf("sell-2"), decimal.NewFromFloat(1.0), decimal.New(120, 0))
+	done, _, _, _ := ob.ProcessGhostLimitOrder(Buy, fmt.Sprintf("buy-1"), decimal.NewFromFloat(1.8), decimal.New(130, 0))
+	if len(done) != 2 {
+		t.Fatal("OrderBook failed to process ghost limit order (asks are not empty)")
+	}
+}
